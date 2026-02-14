@@ -6,7 +6,7 @@ import io
 import os
 
 # --- UI Setup ---
-st.set_page_config(layout="wide", page_title="KFB3 - Gemini 3 Edition", page_icon="🦊")
+st.set_page_config(layout="wide", page_title="KFB2", page_icon="🦊")
 
 st.markdown(f'''
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
@@ -14,9 +14,9 @@ st.markdown(f'''
 <meta name="theme-color" content="#FF6600"> 
 ''', unsafe_allow_html=True)
 
-st.title("🦊 Koifox-Bot 3 (Gemini 3 Preview)")
+st.title("🦊 Koifox-Bot 2 (Gemini 3 Preview)")
 
-# --- API Konfiguration (SDK 2026) ---
+# --- API Konfiguration ---
 def get_client():
     if 'gemini_key' not in st.secrets:
         st.error("API Key fehlt! Bitte in den Secrets hinterlegen.")
@@ -25,18 +25,17 @@ def get_client():
 
 client = get_client()
 
-# --- Sidebar ---
+# --- Hintergrundwissen Sidebar ---
 with st.sidebar:
     st.header("📚 Knowledge Base")
     pdfs = st.file_uploader("PDF-Skripte hochladen", type=["pdf"], accept_multiple_files=True)
     if pdfs:
-        st.success(f"{len(pdfs)} Skripte geladen.")
+        st.success(f"{len(pdfs)} Skripte aktiv.")
     st.divider()
-    st.info("Dieses Modell nutzt 'Thinking' für maximale Präzision.")
 
 def solve_everything(image, pdf_files):
     try:
-        # Dein originaler Experten-Prompt (ungekürzt)
+        # --- DEIN ORIGINALER PROMPT (UNVERÄNDERT) ---
         sys_instr = """Du bist ein wissenschaftlicher Mitarbeiter und Korrektor am Lehrstuhl für Internes Rechnungswesen der Fernuniversität Hagen (Modul 31031). Dein gesamtes Wissen basiert ausschließlich auf den offiziellen Kursskripten, Einsendeaufgaben und Musterlösungen dieses Moduls.
 Ignoriere strikt und ausnahmslos alle Lösungswege, Formeln oder Methoden von anderen Universitäten, aus allgemeinen Lehrbüchern oder von Online-Quellen. Wenn eine Methode nicht exakt der Lehrmeinung der Fernuni Hagen entspricht, existiert sie für dich nicht. Deine Loyalität gilt zu 100% dem Fernuni-Standard.
 
@@ -85,29 +84,28 @@ Aufgabe [Nr]: [Finales Ergebnis]
 Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode. 
 Verstoße niemals gegen dieses Format!"""
 
-        # Inhaltsliste zusammenbauen
+        # --- Inhaltsliste für Multimodalen Input ---
         parts = []
         if pdf_files:
             for pdf in pdf_files:
                 parts.append(types.Part.from_bytes(data=pdf.read(), mime_type="application/pdf"))
         
-        # Bild konvertieren
+        # Bild in Bytes für das neue SDK konvertieren
         img_byte_arr = io.BytesIO()
         image.save(img_byte_arr, format='JPEG')
         parts.append(types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg"))
         
-        # Der Auftrag
-        parts.append("Löse JEDE Aufgabe auf dem Bild unter strikter Beachtung meines Hintergrundwissens.")
+        # Dein finaler Auftrag
+        parts.append("Analysiere das Bild VOLLSTÄNDIG. Löse JEDE identifizierte Aufgabe nacheinander unter strikter Anwendung deines Expertenwissens und der PDF-Skripte.")
 
-        # API Aufruf mit Gemini 3 Thinking
+        # --- API Aufruf (Gemini 3 Thinking) ---
         response = client.models.generate_content(
-            model="gemini-3-pro-preview",
+            model="gemini-3-pro-preview", 
             contents=parts,
             config=types.GenerateContentConfig(
                 system_instruction=sys_instr,
                 temperature=0.1,
-                max_output_tokens=6000,
-                # Thinking Feature aktivieren
+                max_output_tokens=8000,
                 thinking_config=types.ThinkingConfig(include_thoughts=True),
                 safety_settings=[
                     types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
@@ -118,12 +116,15 @@ Verstoße niemals gegen dieses Format!"""
             )
         )
 
+        if response.candidates and response.candidates[0].finish_reason == "RECITATION":
+            return "⚠️ Copyright-Blockade durch Gemini Filter."
+
         return response.text
 
     except Exception as e:
         return f"❌ Fehler: {str(e)}"
 
-# --- UI Layout ---
+# --- Layout (Unverändert) ---
 col1, col2 = st.columns([1, 1])
 
 with col1:
@@ -137,8 +138,10 @@ with col1:
 
 with col2:
     if uploaded_file:
-        if st.button("🚀 Aufgaben mit Gemini 3 lösen", type="primary"):
-            with st.spinner("Gemini löst..."):
+        if st.button("🚀 ALLE Aufgaben präzise lösen", type="primary"):
+            with st.spinner("Gemini 3 'denkt' nach..."):
                 result = solve_everything(img, pdfs)
                 st.markdown("### 🎯 Ergebnis")
                 st.write(result)
+    else:
+        st.info("Lade ein Bild hoch, um die Analyse zu starten.")
