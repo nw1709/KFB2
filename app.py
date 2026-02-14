@@ -78,11 +78,13 @@ d) Meister-Regel zur finalen Bewertung (Absolute Priorität): Die Kernprinzip-An
 Zusätzliche Hinweise:
 Arbeite strikt nach den FernUni‑Regeln für Dominanzaufgaben (Inputs auf Achsen, Output konstant): z^a dominiert z^b, wenn für alle Inputs z^a ≤ z^b und mindestens ein Input strikt < ist (Output konstant).
 
-Output-Format:
-Gib deine finale Antwort zwingend im folgenden Format aus:
+ULTRA-STRIKTE AUSGABE-REGEL:
+Um Abbrüche zu vermeiden, gib NUR das Endergebnis aus. KEINE langen Herleitungen.
+Format pro Teilaufgabe:
 Aufgabe [Nr]: [Finales Ergebnis]
-Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode. 
-Verstoße niemals gegen dieses Format!"""
+Begründung: [Maximal EIN kurzer, präziser Satz zur Fernuni-Methodik].
+
+Verstoße niemals gegen diese Kürze!"""
 
         # --- Inhaltsliste für Multimodalen Input ---
         parts = []
@@ -105,7 +107,7 @@ Verstoße niemals gegen dieses Format!"""
             config=types.GenerateContentConfig(
                 system_instruction=sys_instr,
                 temperature=0.1,
-                max_output_tokens=8000,
+                max_output_tokens=4000,
                 thinking_config=types.ThinkingConfig(include_thoughts=True),
                 safety_settings=[
                     types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
@@ -139,7 +141,7 @@ with col1:
 with col2:
     if uploaded_file:
         if st.button("🚀 ALLE Aufgaben präzise lösen", type="primary"):
-            with st.spinner("Gemini 3 'denkt' nach..."):
+            with st.spinner("Gemini 3 löst..."):
                 result = solve_everything(img, pdfs)
                 st.markdown("### 🎯 Ergebnis")
                 st.write(result)
