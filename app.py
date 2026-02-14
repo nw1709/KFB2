@@ -34,12 +34,8 @@ with st.sidebar:
         st.success(f"{len(pdfs)} Skripte aktiv.")
     st.divider()
 
-# --- Der Master-Solver ---
 def solve_everything(image, pdf_files):
     try:
-        # Wir bleiben bei 2.5 Pro für höchste Stabilität
-client = genai.Client()
-
 response = client.models.generate_content(
     model="gemini-3-pro-preview",
     contents="How does AI work?",
