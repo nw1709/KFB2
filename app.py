@@ -1,13 +1,12 @@
 import streamlit as st
 from google import genai
 from google.genai import types
-from google.genai.types import HarmCategory, HarmBlockThreshold
 from PIL import Image
+import io
 import os
 
-
 # --- UI Setup ---
-st.set_page_config(layout="wide", page_title="KFB3", page_icon="🦊")
+st.set_page_config(layout="wide", page_title="KFB3 - Gemini 3 Edition", page_icon="🦊")
 
 st.markdown(f'''
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
@@ -15,42 +14,30 @@ st.markdown(f'''
 <meta name="theme-color" content="#FF6600"> 
 ''', unsafe_allow_html=True)
 
-st.title("🦊 Koifox-Bot 3")
+st.title("🦊 Koifox-Bot 3 (Gemini 3 Preview)")
 
-# --- API Konfiguration ---
-def setup_gemini():
+# --- API Konfiguration (SDK 2026) ---
+def get_client():
     if 'gemini_key' not in st.secrets:
         st.error("API Key fehlt! Bitte in den Secrets hinterlegen.")
         st.stop()
-    genai.configure(api_key=st.secrets["gemini_key"])
+    return genai.Client(api_key=st.secrets["gemini_key"])
 
-setup_gemini()
+client = get_client()
 
-# --- Hintergrundwissen Sidebar ---
+# --- Sidebar ---
 with st.sidebar:
     st.header("📚 Knowledge Base")
     pdfs = st.file_uploader("PDF-Skripte hochladen", type=["pdf"], accept_multiple_files=True)
     if pdfs:
-        st.success(f"{len(pdfs)} Skripte aktiv.")
+        st.success(f"{len(pdfs)} Skripte geladen.")
     st.divider()
+    st.info("Dieses Modell nutzt 'Thinking' für maximale Präzision.")
 
 def solve_everything(image, pdf_files):
     try:
-response = client.models.generate_content(
-    model="gemini-3-pro-preview",
-    contents="How does AI work?",
-    config=types.GenerateContentConfig(
-        thinking_config=types.ThinkingConfig(thinking_level="low")
-            generation_config={"temperature": 0.1, "max_output_tokens": 6000},
-            safety_settings={
-                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-            },
-                             ),
-)
-            system_instruction="""Du bist ein wissenschaftlicher Mitarbeiter und Korrektor am Lehrstuhl für Internes Rechnungswesen der Fernuniversität Hagen (Modul 31031). Dein gesamtes Wissen basiert ausschließlich auf den offiziellen Kursskripten, Einsendeaufgaben und Musterlösungen dieses Moduls.
+        # Dein originaler Experten-Prompt (ungekürzt)
+        sys_instr = """Du bist ein wissenschaftlicher Mitarbeiter und Korrektor am Lehrstuhl für Internes Rechnungswesen der Fernuniversität Hagen (Modul 31031). Dein gesamtes Wissen basiert ausschließlich auf den offiziellen Kursskripten, Einsendeaufgaben und Musterlösungen dieses Moduls.
 Ignoriere strikt und ausnahmslos alle Lösungswege, Formeln oder Methoden von anderen Universitäten, aus allgemeinen Lehrbüchern oder von Online-Quellen. Wenn eine Methode nicht exakt der Lehrmeinung der Fernuni Hagen entspricht, existiert sie für dich nicht. Deine Loyalität gilt zu 100% dem Fernuni-Standard.
 
 Wichtig: Identifiziere ALLE Aufgaben auf dem hochgeladenen Bild (z.B. Aufgabe 1 und Aufgabe 2) und löse sie nacheinander vollständig.
@@ -97,28 +84,46 @@ Gib deine finale Antwort zwingend im folgenden Format aus:
 Aufgabe [Nr]: [Finales Ergebnis]
 Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode. 
 Verstoße niemals gegen dieses Format!"""
-        )
 
-        content = []
+        # Inhaltsliste zusammenbauen
+        parts = []
         if pdf_files:
             for pdf in pdf_files:
-                content.append({"mime_type": "application/pdf", "data": pdf.read()})
+                parts.append(types.Part.from_bytes(data=pdf.read(), mime_type="application/pdf"))
         
-        content.append(image)
+        # Bild konvertieren
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format='JPEG')
+        parts.append(types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg"))
         
+        # Der Auftrag
+        parts.append("Löse JEDE Aufgabe auf dem Bild unter strikter Beachtung meines Hintergrundwissens.")
 
-        prompt = "Analysiere das Bild VOLLSTÄNDIG. Löse JEDE identifizierte Aufgabe (Aufgabe 1, 2, etc.) nacheinander unter strikter Anwendung deines Expertenwissens und der PDF-Skripte."
-        
-        response = model.generate_content([prompt] + content)
-        
-        if response.candidates and response.candidates[0].finish_reason == 4:
-            return "⚠️ Die Antwort wurde vom Copyright-Filter blockiert. Versuche das Bild zuzuschneiden."
-            
+        # API Aufruf mit Gemini 3 Thinking
+        response = client.models.generate_content(
+            model="gemini-3-pro-preview",
+            contents=parts,
+            config=types.GenerateContentConfig(
+                system_instruction=sys_instr,
+                temperature=0.1,
+                max_output_tokens=6000,
+                # Thinking Feature aktivieren
+                thinking_config=types.ThinkingConfig(include_thoughts=True),
+                safety_settings=[
+                    types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
+                    types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+                    types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
+                    types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                ]
+            )
+        )
+
         return response.text
+
     except Exception as e:
         return f"❌ Fehler: {str(e)}"
 
-# --- Layout ---
+# --- UI Layout ---
 col1, col2 = st.columns([1, 1])
 
 with col1:
@@ -132,10 +137,8 @@ with col1:
 
 with col2:
     if uploaded_file:
-        if st.button("🚀 ALLE Aufgaben präzise lösen", type="primary"):
-            with st.spinner("Analysiere alle Aufgaben nach FernUni-Standard..."):
+        if st.button("🚀 Aufgaben mit Gemini 3 lösen", type="primary"):
+            with st.spinner("Gemini löst..."):
                 result = solve_everything(img, pdfs)
-                st.markdown("### Ergebnis")
+                st.markdown("### 🎯 Ergebnis")
                 st.write(result)
-    else:
-        st.info("Lade ein Bild hoch, um die Analyse zu starten.")
