@@ -1,177 +1,145 @@
 import streamlit as st
-from openai import OpenAI, OpenAIError
+from google import genai
+from google.genai import types
+from google.genai.types import HarmCategory, HarmBlockThreshold
 from PIL import Image
-import logging
-import io
-import pdf2image
 import os
-import base64
 
-# Meta-Tags und Icon für iOS Homescreen Shortcut
+
+# --- UI Setup ---
+st.set_page_config(layout="wide", page_title="KFB3", page_icon="🦊")
+
 st.markdown(f'''
-<!-- Apple Touch Icon -->
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
-
-<!-- Web App Meta Tags -->
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#FF6600"> 
-
-<!-- Optional: Splashscreen (kann später ergänzt werden) -->
 ''', unsafe_allow_html=True)
 
-st.set_page_config(layout="centered", page_title="KFB2", page_icon="🦊")
+st.title("🦊 Koifox-Bot 3")
 
-st.title("🦊 Koifox-Bot 2 ")
-st.write("made with deep minimal & love by fox 🚀")
-
-
-# --- Logger Setup ---
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# --- API Key Validation ---
-def validate_keys():
-    required_keys = {
-        'openai_key': ('sk-', "OpenAI")
-    }
-    missing = []
-    invalid = []
-    
-    for key, (prefix, name) in required_keys.items():
-        if key not in st.secrets:
-            missing.append(name)
-        elif not st.secrets[key].startswith(prefix):
-            invalid.append(name)
-    
-    if missing or invalid:
-        st.error(f"API Key Problem: Missing {', '.join(missing)} | Invalid {', '.join(invalid)}")
+# --- API Konfiguration ---
+def setup_gemini():
+    if 'gemini_key' not in st.secrets:
+        st.error("API Key fehlt! Bitte in den Secrets hinterlegen.")
         st.stop()
+    genai.configure(api_key=st.secrets["gemini_key"])
 
-validate_keys()
+setup_gemini()
 
-# --- API Client ---
-openai_client = OpenAI(api_key=st.secrets["openai_key"])
+# --- Hintergrundwissen Sidebar ---
+with st.sidebar:
+    st.header("📚 Knowledge Base")
+    pdfs = st.file_uploader("PDF-Skripte hochladen", type=["pdf"], accept_multiple_files=True)
+    if pdfs:
+        st.success(f"{len(pdfs)} Skripte aktiv.")
+    st.divider()
 
-# --- Datei in Bild konvertieren ---
-def convert_to_image(uploaded_file):
+# --- Der Master-Solver ---
+def solve_everything(image, pdf_files):
     try:
-        file_extension = os.path.splitext(uploaded_file.name)[1].lower()
-        logger.info(f"Processing file with extension: {file_extension}")
-        
-        if file_extension in ['.png', '.jpeg', '.jpg', '.gif', '.webp']:
-            image = Image.open(uploaded_file)
-            if not image.format:
-                image = image.convert('RGB')  # Zwangs-Konvertierung, falls Format nicht erkannt
-            logger.info(f"Loaded image with format: {image.format}")
-            return image
-        
-        
-        else:
-            st.error(f"❌ Nicht unterstütztes Format: {file_extension}. Bitte lade PNG, JPEG, GIF, WebP oder PDF hoch.")
-            st.stop()
-            
-    except Exception as e:
-        logger.error(f"Error converting file to image: {str(e)}")
-        st.error(f"❌ Fehler bei der Konvertierung: {str(e)}")
-        return None
+        # Wir bleiben bei 2.5 Pro für höchste Stabilität
+client = genai.Client()
 
-# --- OpenAI o3 Solver mit Bildverarbeitung ---
-def solve_with_o3(image):
-    try:
-        logger.info("Preparing image for OpenAI o3")
-        img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='JPEG', quality=85)  # Qualität anpassen
-        img_bytes = img_byte_arr.getvalue()
-        logger.info(f"Image size in bytes: {len(img_bytes)}")
+response = client.models.generate_content(
+    model="gemini-3-pro-preview",
+    contents="How does AI work?",
+    config=types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(thinking_level="low")
+            generation_config={"temperature": 0.1, "max_output_tokens": 6000},
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            },
+                             ),
+)
+            system_instruction="""Du bist ein wissenschaftlicher Mitarbeiter und Korrektor am Lehrstuhl für Internes Rechnungswesen der Fernuniversität Hagen (Modul 31031). Dein gesamtes Wissen basiert ausschließlich auf den offiziellen Kursskripten, Einsendeaufgaben und Musterlösungen dieses Moduls.
+Ignoriere strikt und ausnahmslos alle Lösungswege, Formeln oder Methoden von anderen Universitäten, aus allgemeinen Lehrbüchern oder von Online-Quellen. Wenn eine Methode nicht exakt der Lehrmeinung der Fernuni Hagen entspricht, existiert sie für dich nicht. Deine Loyalität gilt zu 100% dem Fernuni-Standard.
 
-        # Base64 kodieren und überprüfen
-        img_base64 = base64.b64encode(img_bytes).decode('utf-8')
-        logger.info(f"Base64 encoded length: {len(img_base64)}")
+Wichtig: Identifiziere ALLE Aufgaben auf dem hochgeladenen Bild (z.B. Aufgabe 1 und Aufgabe 2) und löse sie nacheinander vollständig.
 
-        response = openai_client.chat.completions.create(
-            model="o3",
-            messages=[
-                {
-                    "role": "system",
-                    "content": """You are a PhD-level expert in 'Internes Rechnungswesen (31031)' at Fernuniversität Hagen. Solve exam questions with 100% accuracy, strictly adhering to the decision-oriented German managerial-accounting framework as taught in Fernuni Hagen lectures and past exam solutions. 
+Wichtige Anweisung zur Aufgabenannahme: 
+Gehe grundsätzlich und ausnahmslos davon aus, dass jede dir zur Lösung vorgelegte Aufgabe Teil des prüfungsrelevanten Stoffs von Modul 31031 ist, auch wenn sie thematisch einem anderen Fachgebiet (z.B. Marketing, Produktion, Recht) zugeordnet werden könnte. Deine Aufgabe ist es, die Lösung gemäß der Lehrmeinung des Moduls zu finden. Lehne eine Aufgabe somit niemals ab.
 
-Tasks:
-1. Read the task EXTREMELY carefully
-2. For graphs or charts: Use only the explicitly provided axis labels, scales, and intersection points to perform calculations
-3. Analyze the problem step-by-step as per Fernuni methodology
-4. For multiple choice: Evaluate each option individually based solely on the given data
-5. Perform a self-check: Re-evaluate your answer to ensure it aligns with Fernuni standards and the exact OCR input
+Lösungsprozess:
+1. Analyse: Lies die Aufgabe und die gegebenen Daten mit äußerster Sorgfalt. Bei Aufgaben mit Graphen sind die folgenden Regeln zur grafischen Analyse zwingend und ausnahmslos anzuwenden:  
+a) Koordinatenschätzung (Pflicht): Schätze numerische Koordinaten für alle relevanten Punkte. Stelle diese in einer  Tabelle dar. Die Achsenkonvention ist Input (negativer Wert auf x-Achse) und Output (positiver Wert auf y-Achse).
+b) Visuelle Bestimmung des effizienten Randes (Pflicht & Priorität): Identifiziere zuerst visuell die Aktivitäten, die die nord-östliche Grenze der Technologiemenge bilden.
+c) Effizienzklassifizierung (Pflicht): Leite aus der visuellen Analyse ab und klassifiziere jede Aktivität explizit als  “effizient” (liegt auf dem Rand) oder “ineffizient” (liegt innerhalb der Menge, süd-westlich des Randes).
+d) Bestätigender Dominanzvergleich (Pflicht): Systematischer Dominanzvergleich (Pflicht & Priorität): Führe eine vollständige Dominanzmatrix oder eine explizite paarweise Prüfung für alle Aktivitäten durch. Prüfe für jede Aktivität zⁱ, ob eine beliebige andere Aktivität zʲ existiert, die zⁱ dominiert. Die visuelle Einschätzung dient nur als Hypothese. Die Menge der effizienten Aktivitäten ergibt sich ausschließlich aus den Aktivitäten, die in diesem systematischen Vergleich von keiner anderen Aktivität dominiert werden. Liste alle gefundenen Dominanzbeziehungen explizit auf (z.B. "z⁸ dominiert z¹", "z⁸ dominiert z²", etc.).
 
-CRITICAL: You MUST provide answers in this EXACT format for EVERY task found:
+2. Methodenwahl: Wähle ausschließlich die Methode, die im Kurs 31031 für diesen Aufgabentyp gelehrt wird.
 
-Aufgabe [Nr]: [Final answer]
-Begründung: [1 brief but consise sentence in German]
+3. Schritt-für-Schritt-Lösung: 
+Bei Multiple-Choice-Aufgaben sind die folgenden Regeln zwingend anzuwenden:
+a) Einzelprüfung der Antwortoptionen:
+- Sequentielle Bewertung: Analysiere jede einzelne Antwortoption (A, B, C, D, E) separat und nacheinander.
+- Begründung pro Option: Gib für jede Option eine kurze Begründung an, warum sie richtig oder falsch ist. Beziehe  dabei explizit auf ein Konzept, eine Definition, ein Axiom oder das Ergebnis deiner Analyse.
+- Terminologie-Check: Überprüfe bei jeder Begründung die verwendeten Fachbegriffe auf exakte Konformität mit der Lehrmeinung des Moduls 31031,      
+b) Terminologische Präzision:
+- Prüfe aktiv auf bekannte terminologische Fallstricke des Moduls 31031. Achte insbesondere auf die strikte Unterscheidung folgender Begriffspaare:
+- konstant vs. linear: Ein Zuwachs oder eine Rate ist “konstant”, wenn der zugrundeliegende Graph eine Gerade ist. Der Begriff “linear” ist in diesem Kontext oft falsch.
+- pagatorisch vs. wertmäßig/kalkulatorisch: Stelle die korrekte Zuordnung sicher.
+- Kosten vs. Aufwand vs. Ausgabe vs. Auszahlung: Prüfe die exakte Definition im Aufgabenkontext.
+c) Kernprinzip-Analyse bei komplexen Aussagen (Pflicht): Bei der Einzelprüfung von Antwortoptionen, insbesondere bei solchen, die aus mehreren Teilsätzen bestehen (z.B. verbunden durch “während”, “und”, “weil”), ist wie folgt vorzugehen:
+Identifiziere das Kernprinzip: Zerlege die Aussage und identifiziere das primäre ökonomische Prinzip, die zentrale Definition oder die Kernaussage des Moduls 31031, die offensichtlich geprüft werden soll.
+Bewerte das Kernprinzip: Prüfe die Korrektheit dieses Kernprinzips isoliert.
+Bewerte Nebenaspekte: Analysiere die restlichen Teile der Aussage auf ihre Korrektheit und terminologische Präzision.
+Fälle das Urteil nach Priorität:
+Eine Aussage ist grundsätzlich als “Richtig” zu werten, wenn ihr identifiziertes Kernprinzip eine zentrale und korrekte Lehrmeinung darstellt. Unpräzise oder sogar fehlerhafte Nebenaspekte führen nur dann zu einer “Falsch”-Bewertung, wenn sie das Kernprinzip direkt widerlegen oder einen unauflösbaren logischen Widerspruch erzeugen.
+Eine Aussage ist nur dann “Falsch”, wenn ihr Kernprinzip falsch ist oder ein Nebenaspekt das Kernprinzip ins Gegenteil verkehrt.
+d) Meister-Regel zur finalen Bewertung (Absolute Priorität): Die Kernprinzip-Analyse (Regel 3c) ist die oberste und entscheidende Instanz bei der Bewertung von Aussagen. Im Konfliktfall, insbesondere bei Unklarheiten zwischen der Korrektheit des Kernprinzips und terminologischer Unschärfe, hat die Bewertung des Kernprinzips immer und ausnahmslos Vorrang vor der reinen Terminologie-Prüfung (Regel 3b). Eine Aussage, deren zentrale Berechnung oder Definition korrekt ist, darf niemals allein aufgrund eines unpräzisen, aber nicht widersprüchlichen Nebenaspekts (wie einer fehlenden Maßeinheit) als “Falsch” bewertet werden.
 
-NO OTHER FORMAT IS ACCEPTABLE. """
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Extract all text from the provided exam image EXACTLY as written, including every detail from graphs, charts, or sketches. For graphs: Explicitly list ALL axis labels, ALL scales, ALL intersection points with axes (e.g., 'x-axis at 450', 'y-axis at 20'), and EVERY numerical value or annotation. Then, solve ONLY the tasks identified (e.g., Aufgabe 1). Use the following format: Aufgabe [number]: [Your answer here] Begründung: [Short explanation]. Do NOT mention or solve other tasks!"},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
-                    ]
-                }
-            ],
-            max_completion_tokens=4000
+4. Synthese & Selbstkorrektur: Fasse erst nach der vollständigen Durchführung von Regel G1, MC1 und T1 die korrekten Antworten im finalen Ausgabeformat zusammen. Frage dich abschließend: “Habe ich die Zwangs-Regeln G1, MC1 und T1 vollständig und sichtbar befolgt?”
+
+Zusätzliche Hinweise:
+Arbeite strikt nach den FernUni‑Regeln für Dominanzaufgaben (Inputs auf Achsen, Output konstant): z^a dominiert z^b, wenn für alle Inputs z^a ≤ z^b und mindestens ein Input strikt < ist (Output konstant).
+
+Output-Format:
+Gib deine finale Antwort zwingend im folgenden Format aus:
+Aufgabe [Nr]: [Finales Ergebnis]
+Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode. 
+Verstoße niemals gegen dieses Format!"""
         )
-        logger.info("Received response from OpenAI o3")
-        return response.choices[0].message.content
-    except OpenAIError as e:
-        logger.error(f"o3 API Error: {str(e)}")
-        st.error(f"❌ o3 API Fehler: {str(e)}")
-        return None
+
+        content = []
+        if pdf_files:
+            for pdf in pdf_files:
+                content.append({"mime_type": "application/pdf", "data": pdf.read()})
+        
+        content.append(image)
+        
+
+        prompt = "Analysiere das Bild VOLLSTÄNDIG. Löse JEDE identifizierte Aufgabe (Aufgabe 1, 2, etc.) nacheinander unter strikter Anwendung deines Expertenwissens und der PDF-Skripte."
+        
+        response = model.generate_content([prompt] + content)
+        
+        if response.candidates and response.candidates[0].finish_reason == 4:
+            return "⚠️ Die Antwort wurde vom Copyright-Filter blockiert. Versuche das Bild zuzuschneiden."
+            
+        return response.text
     except Exception as e:
-        logger.error(f"Unexpected o3 Error: {str(e)}")
-        st.error(f"❌ Unerwarteter Fehler: {str(e)}")
-        return None
+        return f"❌ Fehler: {str(e)}"
 
-# --- HAUPTINTERFACE ---
-debug_mode = st.checkbox("🔍 Debug-Modus", value=False)
+# --- Layout ---
+col1, col2 = st.columns([1, 1])
 
-uploaded_file = st.file_uploader("**Klausuraufgabe hochladen...**", type=["png", "jpg", "jpeg", "gif", "webp", "pdf"])
+with col1:
+    uploaded_file = st.file_uploader("Klausurblatt hochladen...", type=["png", "jpg", "jpeg"])
+    if uploaded_file:
+        img = Image.open(uploaded_file).convert('RGB')
+        if "rot" not in st.session_state: st.session_state.rot = 0
+        if st.button("🔄 Bild drehen"): st.session_state.rot = (st.session_state.rot + 90) % 360
+        img = img.rotate(-st.session_state.rot, expand=True)
+        st.image(img, use_container_width=True)
 
-if uploaded_file is not None:
-    try:
-        image = convert_to_image(uploaded_file)
-        if image:
-            # Rotation-Status im Session State initialisieren
-            if "rotation" not in st.session_state:
-                st.session_state.rotation = 0
-
-            # Button zum Drehen
-            if st.button("Bild drehen"):
-                st.session_state.rotation = (st.session_state.rotation + 90) % 360
-
-            # Bild drehen (PIL dreht gegen den Uhrzeigersinn, daher minus)
-            rotated_img = image.rotate(-st.session_state.rotation, expand=True)
-
-            # Vorschau anzeigen
-            st.image(rotated_img, caption=f"Verarbeitetes Bild (gedreht um {st.session_state.rotation}°)", use_container_width=True)
-
-            # Button zum Lösen mit gedrehtem Bild
-            if st.button("🧮 Aufgabe(n) lösen", type="primary"):
-                st.markdown("---")
-                with st.spinner("OpenAI o3 analysiert..."):
-                    o3_solution = solve_with_o3(rotated_img)
-
-                if o3_solution:
-                    st.markdown("### 🎯 FINALE LÖSUNG")
-                    st.markdown(o3_solution)
-                    if debug_mode:
-                        with st.expander("🔍 o3 Rohausgabe"):
-                            st.code(o3_solution)
-                else:
-                    st.error("❌ Keine Lösung generiert")
-    except Exception as e:
-        logger.error(f"Error processing file: {str(e)}")
-        st.error(f"❌ Fehler bei der Verarbeitung: {str(e)}")
-
-# Footer
-st.markdown("---")
-st.caption("Made by Fox & Koi-9 ❤️ | OpenAI o3")
+with col2:
+    if uploaded_file:
+        if st.button("🚀 ALLE Aufgaben präzise lösen", type="primary"):
+            with st.spinner("Analysiere alle Aufgaben nach FernUni-Standard..."):
+                result = solve_everything(img, pdfs)
+                st.markdown("### Ergebnis")
+                st.write(result)
+    else:
+        st.info("Lade ein Bild hoch, um die Analyse zu starten.")
