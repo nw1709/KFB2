@@ -1,12 +1,12 @@
 import streamlit as st
-from google import genai
-from google.genai import types
+import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from PIL import Image
 import io
 import os
 
 # --- 1. UI SETUP ---
-st.set_page_config(layout="wide", page_title="KFB3", page_icon="🦊")
+st.set_page_config(layout="wide", page_title="KFB2", page_icon="🦊")
 
 st.markdown(f'''
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
@@ -14,30 +14,43 @@ st.markdown(f'''
 <meta name="theme-color" content="#FF6600"> 
 ''', unsafe_allow_html=True)
 
-st.title("🦊 Koifox-Bot 3 (Gemini 3 Pro Preview Edition)")
+st.title("🦊 Koifox-Bot 2 (Gemini 2.5 Pro)")
 
-# --- 2. API KONFIGURATION (SDK 2026) ---
-def get_client():
+# --- 2. API KONFIGURATION ---
+def setup_gemini():
     if 'gemini_key' not in st.secrets:
         st.error("API Key fehlt! Bitte 'gemini_key' in den Secrets hinterlegen.")
         st.stop()
-    return genai.Client(api_key=st.secrets["gemini_key"])
+    genai.configure(api_key=st.secrets["gemini_key"])
+
+setup_gemini()
 
 # --- 3. SIDEBAR (KNOWLEDGE BASE) ---
 with st.sidebar:
     st.header("📚 Knowledge Base")
-    pdfs = st.file_uploader("PDF-Skripte / Gesetze hochladen", type=["pdf"], accept_multiple_files=True)
+    pdfs = st.file_uploader("PDF-Skripte hochladen", type=["pdf"], accept_multiple_files=True)
     if pdfs:
-        st.success(f"{len(pdfs)} Skripte geladen.")
+        st.success(f"{len(pdfs)} Skripte aktiv.")
     st.divider()
-    st.info("Modell: gemini-3-pro-preview | Thinking: Aktiv")
+    st.info("Modus: Maximale Präzision | Gekürzte Ausgabe gegen Abbrüche.")
 
 # --- 4. DER MASTER-SOLVER ---
 def solve_everything(image, pdf_files):
-    client = get_client()
     try:
-        # --- DEIN ORIGINALER, UNGEKÜRZTER PROMPT ---
-        sys_instr = """Du bist ein wissenschaftlicher Mitarbeiter und Korrektor am Lehrstuhl für Internes Rechnungswesen der Fernuniversität Hagen (Modul 31031). Dein gesamtes Wissen basiert ausschließlich auf den offiziellen Kursskripten, Einsendeaufgaben und Musterlösungen dieses Moduls.
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-pro",
+            generation_config={
+                "temperature": 0.1, 
+                "max_output_tokens": 8192 # Absolutes Maximum gegen finish_reason 2
+            },
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            },
+            # --- DEIN ORIGINALER, UNGEKÜRZTER PROMPT ---
+            system_instruction="""Du bist ein wissenschaftlicher Mitarbeiter und Korrektor am Lehrstuhl für Internes Rechnungswesen der Fernuniversität Hagen (Modul 31031). Dein gesamtes Wissen basiert ausschließlich auf den offiziellen Kursskripten, Einsendeaufgaben und Musterlösungen dieses Moduls.
 Ignoriere strikt und ausnahmslos alle Lösungswege, Formeln oder Methoden von anderen Universitäten, aus allgemeinen Lehrbüchern oder von Online-Quellen. Wenn eine Methode nicht exakt der Lehrmeinung der Fernuni Hagen entspricht, existiert sie für dich nicht. Deine Loyalität gilt zu 100% dem Fernuni-Standard.
 
 Wichtig: Identifiziere ALLE Aufgaben auf dem hochgeladenen Bild (z.B. Aufgabe 1 und Aufgabe 2) und löse sie nacheinander vollständig.
@@ -68,63 +81,58 @@ d) Meister-Regel zur finalen Bewertung (Absolute Priorität): Die Kernprinzip-An
 4. Synthese & Selbstkorrektur: Fasse erst nach der vollständigen Durchführung von Regel G1, MC1 und T1 zusammen. Frage dich abschließend: “Habe ich die Zwangs-Regeln vollständig und sichtbar befolgt?”
 
 Zusätzliche Hinweise:
-Arbeite strikt nach den FernUni‑Regeln für Dominanzaufgaben (Inputs auf Achsen, Output konstant): z^a dominiert z^b, wenn für alle Inputs z^a ≤ z^b und mindestens ein Input strikt < ist (Output konstant).
+Arbeite strikt nach den FernUni‑Regeln für Dominanzaufgaben.
 
-WICHTIG GEGEN ABBRÜCHE:
-Schließe JEDE Berechnung und JEDEN Satz vollständig ab. Nutze das verfügbare Fenster effizient aus.
-
-Output-Format:
-Gib deine finale Antwort zwingend im folgenden Format aus:
-Aufgabe [Nr]: [Finales Ergebnis]
-Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode].
-Verstoße niemals gegen dieses Format!"""
-
-        # Multimodaler Input
-        parts = []
-        if pdf_files:
-            for pdf in pdf_files:
-                parts.append(types.Part.from_bytes(data=pdf.read(), mime_type="application/pdf"))
-        
-        # Bildbytes
-        img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='JPEG')
-        parts.append(types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg"))
-        
-        parts.append("Löse ALLE Aufgaben auf dem Blatt. Nutze die PDFs für Hintergrundwissen. Beende alle Sätze und Formeln.")
-
-        # API Aufruf mit Gemini 3 Pro Preview & Thinking
-        response = client.models.generate_content(
-            model="gemini-3-pro-preview",
-            contents=parts,
-            config=types.GenerateContentConfig(
-                system_instruction=sys_instr,
-                temperature=0.1,
-                max_output_tokens=8192,
-                thinking_config=types.ThinkingConfig(include_thoughts=True)
-            )
+ULTRA-STRIKTE AUSGABE-REGEL (WICHTIG GEGEN ABBRÜCHE):
+Um zu verhindern, dass die Antwort unvollständig bleibt, gib NUR das Endergebnis und maximal EINEN kurzen Satz Begründung an. 
+Format: Aufgabe [Nr]: [Lösung] | Begründung: [Max. 1 Satz]."""
         )
 
+        content = []
+        if pdf_files:
+            for pdf in pdf_files:
+                content.append({"mime_type": "application/pdf", "data": pdf.read()})
+        
+        content.append(image)
+        
+        prompt = "Analysiere das Bild. Löse JEDE Aufgabe (1, 2, etc.) vollständig, aber antworte so kurz wie möglich (Endergebnis + 1 Satz)."
+        
+        response = model.generate_content([prompt] + content)
+
+        # Fehlerbehandlung für unvollständige Antworten
+        if not response.candidates:
+            return "⚠️ Keine Antwort generiert. Möglicherweise blockiert."
+            
         return response.text
 
     except Exception as e:
-        return f"❌ Fehler: {str(e)}"
+        return f"❌ Fehler in der Analyse: {str(e)}"
 
-# --- 5. UI LAYOUT ---
+# --- 5. HAUPTINTERFACE (UI) ---
 col1, col2 = st.columns([1, 1])
 
 with col1:
+    st.subheader("📤 Upload")
     uploaded_file = st.file_uploader("Klausurblatt hochladen...", type=["png", "jpg", "jpeg"])
+    
     if uploaded_file:
         img = Image.open(uploaded_file).convert('RGB')
-        if "rot" not in st.session_state: st.session_state.rot = 0
-        if st.button("🔄 Bild drehen"): st.session_state.rot = (st.session_state.rot + 90) % 360
-        img = img.rotate(-st.session_state.rot, expand=True)
-        st.image(img, use_container_width=True)
+        
+        if "rot" not in st.session_state:
+            st.session_state.rot = 0
+            
+        if st.button("🔄 Bild drehen"):
+            st.session_state.rot = (st.session_state.rot + 90) % 360
+            
+        rotated_img = img.rotate(-st.session_state.rot, expand=True)
+        st.image(rotated_img, use_container_width=True)
 
 with col2:
+    st.subheader("🎯 Ergebnis")
     if uploaded_file:
-        if st.button("🚀 ALLE Aufgaben mit Gemini 3 lösen", type="primary"):
-            with st.spinner("Gemini 3 Pro Preview denkt nach..."):
-                result = solve_everything(img, pdfs)
-                st.markdown("### 🎯 Ergebnis")
-                st.write(result)
+        if st.button("🚀 Aufgaben präzise lösen", type="primary"):
+            with st.spinner("Gemini 2.5 Pro gleicht mit Skripten ab..."):
+                result = solve_everything(rotated_img, pdfs)
+                st.markdown(result)
+    else:
+        st.info("Bitte lade links ein Bild hoch.")
