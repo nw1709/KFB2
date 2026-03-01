@@ -6,7 +6,7 @@ import io
 import os
 
 # --- 1. UI SETUP ---
-st.set_page_config(layout="wide", page_title="KFB1", page_icon="🦊")
+st.set_page_config(layout="wide", page_title="KFB2", page_icon="🦊")
 
 st.markdown(f'''
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
@@ -14,7 +14,7 @@ st.markdown(f'''
 <meta name="theme-color" content="#FF6600"> 
 ''', unsafe_allow_html=True)
 
-st.title("🦊 Koifox-Bot 1 (Gemini 3.1 Pro Preview)")
+st.title("🦊 KFB2")
 
 # --- 2. API KONFIGURATION ---
 def get_client():
@@ -34,7 +34,7 @@ with st.sidebar:
     if pdfs:
         st.success(f"{len(pdfs)} Skripte geladen.")
     st.divider()
-    st.info("Modell: Gemini 3.1 Pro Preview | Modus: Full Expert")
+    st.info("model: Gemini 3.1 Pro Preview ")
 
 # --- 4. DER MASTER-SOLVER ---
 def solve_everything(image, pdf_files):
@@ -124,38 +124,35 @@ Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-
 Verstoße niemals gegen dieses Format!
         """
 
-        # Multimodaler Input
         parts = []
         if pdf_files:
             for pdf in pdf_files:
-                pdf.seek(0) # Sicherstellen, dass die Datei von Anfang gelesen wird
+                pdf.seek(0)
                 parts.append(types.Part.from_bytes(data=pdf.read(), mime_type="application/pdf"))
         
-        # Bildvorbereitung
         img_byte_arr = io.BytesIO()
         image.save(img_byte_arr, format='JPEG', quality=90)
         parts.append(types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg"))
         
         parts.append("Löse ALLE Aufgaben auf dem Blatt. Nutze die PDFs für Hintergrundwissen. Fass dich beim Output kurz (Lösung + 1 Satz Begründung).")
 
-        # API AUFRUF - Hier sind die entscheidenden Fixes für den 499-Fehler:
+
         response = client.models.generate_content(
             model="gemini-3.1-pro-preview",
             contents=parts,
             config=types.GenerateContentConfig(
                 system_instruction=sys_instr,
-                temperature=0.1,
-                max_output_tokens=8000,
-                thinking_config=types.ThinkingConfig(include_thoughts=True),
-                # FIX: Timeout massiv erhöhen, um '499 CANCELLED' zu verhindern
-                http_options={'timeout': 600} 
+               temperature=0.1,
+        max_output_tokens=8000,
+        thinking_config=types.ThinkingConfig(include_thoughts=True),
+        http_options={'timeout': 600} 
             )
         )
 
         return response.text
 
     except Exception as e:
-        return f"❌ Fehler: {str(e)}"
+        return f"Fehler: {str(e)}"
 
 # --- 5. UI LAYOUT ---
 col1, col2 = st.columns([1, 1])
@@ -176,10 +173,10 @@ with col1:
 
 with col2:
     if uploaded_file:
-        if st.button("🚀 ALLE Aufgaben mit Gemini 3 lösen", type="primary"):
-            with st.spinner("Gemini 3.1 Pro Preview denkt nach..."):
+        if st.button("Aufgaben lösen", type="primary"):
+            with st.spinner("Gemini löst..."):
                 result = solve_everything(img, pdfs)
-                st.markdown("### 🎯 Ergebnis")
+                st.markdown("### Ergebnis")
                 st.write(result)
     else:
         st.info("Bitte lade links ein Bild hoch.")
