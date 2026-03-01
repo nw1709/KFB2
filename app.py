@@ -145,7 +145,6 @@ Verstoße niemals gegen dieses Format!
                temperature=0.1,
         max_output_tokens=8000,
         thinking_config=types.ThinkingConfig(include_thoughts=True),
-        http_options={'timeout': 600} 
             )
         )
 
