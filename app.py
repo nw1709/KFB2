@@ -13,15 +13,13 @@ st.markdown("""
  </style>
 """, unsafe_allow_html=True)
 st.title(" KFB3 Turbo: Enterprise RAG-Light Edition")
-# --- 2. API & CONFIGURATION ---
 def get_client():
- key_name = "gemini_key" if "gemini_key" in st.secrets else 
-"GOOGLE_API_KEY"
- if key_name not in st.secrets:
- st.error(f"API Key fehlt! Bitte '{key_name}' in den Secrets hinterlegen.")
- st.stop()
- return genai.Client(api_key=st.secrets[key_name])
-client = get_client()
+    # WICHTIG: Prüfe in deinen Secrets, ob der Key 'gemini_key' oder 'GOOGLE_API_KEY' heißt!
+    key_name = "gemini_key" if "gemini_key" in st.secrets else "GOOGLE_API_KEY"
+    if key_name not in st.secrets:
+        st.error(f"API Key fehlt! Bitte '{key_name}' in den Secrets hinterlegen.")
+        st.stop()
+    return genai.Client(api_key=st.secrets[key_name])
 # --- 3. RAG-LIGHT: CHUNKING ENGINE (PDF Handling) ---
 def process_pdfs_to_chunks(pdf_files):
  """Zerlegt PDFs in Chunks, um Token-Last zu senken (Punkt 1 & 3 vom 
