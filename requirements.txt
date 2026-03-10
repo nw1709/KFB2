@@ -10,3 +10,5 @@ pypdf2
 openai
 sentence-transformers
 pdf2image
+pdfplumber
+PyPDF2
