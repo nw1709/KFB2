@@ -6,7 +6,7 @@ import io
 import pdfplumber  # Refinierter Extraktor für Tabellen
 
 # --- 1. UI SETUP ---
-st.set_page_config(layout="wide", page_title="KFB1 - OpenAI Edition", page_icon="🦊")
+st.set_page_config(layout="wide", page_title="KFB2 - OpenAI Edition", page_icon="🦊")
 
 st.markdown(f'''
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
@@ -14,7 +14,7 @@ st.markdown(f'''
 <meta name="theme-color" content="#FF6600"> 
 ''', unsafe_allow_html=True)
 
-st.title("🦊 KFB1 - OpenAI Edition")
+st.title("🦊 KFB2 - OpenAI Edition")
 
 # --- 2. API KONFIGURATION ---
 def get_client():
@@ -111,7 +111,7 @@ Output-Format:
 Gib deine finale Antwort zwingend im folgenden Format aus:
 Aufgabe [Nr]: [Finales Ergebnis]
 Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode. 
-Verstoße niemals gegen dieses Format!]"""
+Verstoße niemals gegen dieses Format!"""
 
         # Wissen aus PDFs extrahieren (mit Tabellen-Logik)
         knowledge_context = ""
@@ -122,7 +122,7 @@ Verstoße niemals gegen dieses Format!]"""
         # Bild für OpenAI vorbereiten
         base64_image = encode_image(image)
 
-        # API Aufruf (Achte auf die Einrückung: 8 Leerzeichen oder 2 Tabs vom linken Rand)
+        # API Aufruf
         response = client.chat.completions.create(
             model="gpt-5.4-pro",
             messages=[
@@ -147,6 +147,11 @@ Verstoße niemals gegen dieses Format!]"""
             temperature=0.0,
             max_tokens=4096
         )
+        
+        return response.choices[0].message.content
+
+    except Exception as e:
+        return f"Fehler: {str(e)}"
 
 # --- 6. UI LAYOUT ---
 col1, col2 = st.columns([1, 1])
