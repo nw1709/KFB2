@@ -145,7 +145,7 @@ Verstoße niemals gegen dieses Format!"""
                 }
             ],
             temperature=0.0,
-            max_tokens=4096
+            max_completion_tokens=4096
         )
         
         return response.choices[0].message.content
