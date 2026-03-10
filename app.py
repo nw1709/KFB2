@@ -122,9 +122,9 @@ Verstoße niemals gegen dieses Format!]"""
         # Bild für OpenAI vorbereiten
         base64_image = encode_image(image)
 
-        # API Aufruf
-            response = client.responses.create
-            model="gpt-5.4",
+        # API Aufruf (Achte auf die Einrückung: 8 Leerzeichen oder 2 Tabs vom linken Rand)
+        response = client.chat.completions.create(
+            model="gpt-5.4-pro",
             messages=[
                 {
                     "role": "system",
@@ -133,7 +133,6 @@ Verstoße niemals gegen dieses Format!]"""
                 {
                     "role": "user",
                     "content": [
-                        # Kontextbegrenzung auf ca. 80k Zeichen, um Token-Limits zu wahren
                         {"type": "text", "text": f"Hintergrundwissen aus den Hagen-Skripten:\n{knowledge_context[:80000]}"},
                         {"type": "text", "text": "Löse ALLE Aufgaben auf dem Bild unter strikter Einhaltung deines Lösungsprozesses."},
                         {
@@ -148,11 +147,6 @@ Verstoße niemals gegen dieses Format!]"""
             temperature=0.0,
             max_tokens=4096
         )
-
-        return response.choices[0].message.content
-
-    except Exception as e:
-        return f"Fehler: {str(e)}"
 
 # --- 6. UI LAYOUT ---
 col1, col2 = st.columns([1, 1])
