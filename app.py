@@ -124,7 +124,7 @@ Verstoße niemals gegen dieses Format!"""
 
         # API Aufruf
         response = client.chat.completions.create(
-            model="gpt-5.4-pro",
+            model="gpt-5.4",
             messages=[
                 {
                     "role": "system",
