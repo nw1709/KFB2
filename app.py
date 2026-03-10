@@ -123,7 +123,7 @@ Verstoße niemals gegen dieses Format!]"""
         base64_image = encode_image(image)
 
         # API Aufruf
-            response = client.responses.create(
+            response = client.responses.create
             model="gpt-5.4",
             messages=[
                 {
