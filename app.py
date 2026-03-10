@@ -18,10 +18,10 @@ st.title("🦊 KFB1 - OpenAI Edition")
 
 # --- 2. API KONFIGURATION ---
 def get_client():
-    if 'OPENAI_API_KEY' not in st.secrets:
-        st.error("OpenAI API Key fehlt. Bitte 'OPENAI_API_KEY' in den Secrets hinterlegen.")
+    if 'openai_key' not in st.secrets:
+        st.error("OpenAI API Key fehlt. Bitte 'openai_key' in den Secrets hinterlegen.")
         st.stop()
-    return OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+    return OpenAI(api_key=st.secrets["openai_key"])
 
 client = get_client()
 
@@ -32,7 +32,7 @@ with st.sidebar:
     if pdfs:
         st.success(f"{len(pdfs)} Skripte geladen.")
     st.divider()
-    st.info("Modell: ChatGPT / GPT-4o-Serie")
+    st.info("Modell: ChatGPT")
 
 # --- 4. VERFEINERTE HILFSFUNKTIONEN ---
 def extract_pdf_with_tables(pdf_files):
