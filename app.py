@@ -8,7 +8,7 @@ import json
 from google.oauth2 import service_account
 
 # --- 1. UI SETUP ---
-st.set_page_config(layout="wide", page_title="KFB1", page_icon="🦊")
+st.set_page_config(layout="wide", page_title="KFB2", page_icon="🦊")
 
 st.markdown(f'''
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
@@ -16,35 +16,43 @@ st.markdown(f'''
 <meta name="theme-color" content="#FF6600"> 
 ''', unsafe_allow_html=True)
 
-st.title("🦊 KFB1")
+st.title("🦊 KFB2")
 
-# --- 2. API KONFIGURATION ---
 def get_client():
-    # 1. Wir holen den Textblock aus Streamlit
-    json_text = st.secrets["gcp_service_account"]
-    
-    # 2. Wir wandeln den Text in ein Python-Objekt um
-    mein_schluessel = json.loads(json_text)
-    
-    # 3. Wir erstellen die Anmeldedaten (Credentials)
-    # Hier ziehen wir die 'project_id' direkt aus deinem String
-    credentials = service_account.Credentials.from_service_account_info(mein_schluessel)
-    
-    return genai.Client(
-        vertexai=True, 
-        project=mein_schluessel["project_id"], # Greift auf "project_id" in deinem String zu
-        location="us-central1", 
-        credentials=credentials
-    )
-    
-    # Fallback auf Standard API Key (falls Vertex nicht konfiguriert ist)
-    elif 'gemini_key' in st.secrets:
+    # 1. VERSUCH: VERTEX AI (Enterprise-Schiene)
+    if 'gcp_service_account' in st.secrets:
+        try:
+            service_account_info = json.loads(st.secrets["gcp_service_account"])
+            credentials = service_account.Credentials.from_service_account_info(service_account_info)
+            
+            # Retry-Logik für maximale Stabilität
+            retry_options = types.HttpRetryOptions(
+                initial_delay=2.0,
+                attempts=6,
+                exp_base=2.0,
+                max_delay=30.0,
+                http_status_codes=[429, 500, 502, 503, 504]
+            )
+            
+            return genai.Client(
+                vertexai=True, 
+                project=service_account_info["project_id"], 
+                location="us-central1", 
+                credentials=credentials,
+                http_options=types.HttpOptions(retry_options=retry_options)
+            )
+        except Exception as e:
+            st.warning(f"Vertex AI Start fehlgeschlagen, versuche Fallback... ({e})")
+
+    # 2. VERSUCH: STANDARD API KEY (Backup-Schiene)
+    if 'gemini_key' in st.secrets:
         return genai.Client(api_key=st.secrets["gemini_key"])
         
-    else:
-        st.error("Keine Zugangsdaten gefunden!")
-        st.stop()
+    # Wenn beides fehlt:
+    st.error("🚨 Keine Zugangsdaten gefunden! Bitte gcp_service_account oder gemini_key in den Secrets hinterlegen.")
+    st.stop()
 
+# Client initialisieren
 client = get_client()
 
 # --- 3. SIDEBAR ---
