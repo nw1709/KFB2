@@ -23,9 +23,11 @@ def get_client():
     if 'gcp_service_account' in st.secrets:
         try:
             service_account_info = json.loads(st.secrets["gcp_service_account"])
-            credentials = service_account.Credentials.from_service_account_info(service_account_info)
-            
-            # Retry-Logik für maximale Stabilität
+            credentials = service_account.Credentials.from_service_account_info(
+                service_account_info,
+                scopes=['https://www.googleapis.com/auth/cloud-platform']
+
+            )
             retry_options = types.HttpRetryOptions(
                 initial_delay=2.0,
                 attempts=6,
