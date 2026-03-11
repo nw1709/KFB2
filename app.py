@@ -1,12 +1,14 @@
 import streamlit as st
-from openai import OpenAI
-import base64
+from google import genai
+from google.genai import types
 from PIL import Image
 import io
-import pdfplumber  # Refinierter Extraktor für Tabellen
+import os
+import json
+from google.oauth2 import service_account
 
 # --- 1. UI SETUP ---
-st.set_page_config(layout="wide", page_title="KFB2 - OpenAI Edition", page_icon="🦊")
+st.set_page_config(layout="wide", page_title="KFB1", page_icon="🦊")
 
 st.markdown(f'''
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
@@ -14,14 +16,34 @@ st.markdown(f'''
 <meta name="theme-color" content="#FF6600"> 
 ''', unsafe_allow_html=True)
 
-st.title("🦊 KFB2 - OpenAI Edition")
+st.title("🦊 KFB1")
 
 # --- 2. API KONFIGURATION ---
 def get_client():
-    if 'openai_key' not in st.secrets:
-        st.error("OpenAI API Key fehlt. Bitte 'openai_key' in den Secrets hinterlegen.")
+    # 1. Wir holen den Textblock aus Streamlit
+    json_text = st.secrets["gcp_service_account"]
+    
+    # 2. Wir wandeln den Text in ein Python-Objekt um
+    mein_schluessel = json.loads(json_text)
+    
+    # 3. Wir erstellen die Anmeldedaten (Credentials)
+    # Hier ziehen wir die 'project_id' direkt aus deinem String
+    credentials = service_account.Credentials.from_service_account_info(mein_schluessel)
+    
+    return genai.Client(
+        vertexai=True, 
+        project=mein_schluessel["project_id"], # Greift auf "project_id" in deinem String zu
+        location="us-central1", 
+        credentials=credentials
+    )
+    
+    # Fallback auf Standard API Key (falls Vertex nicht konfiguriert ist)
+    elif 'gemini_key' in st.secrets:
+        return genai.Client(api_key=st.secrets["gemini_key"])
+        
+    else:
+        st.error("Keine Zugangsdaten gefunden!")
         st.stop()
-    return OpenAI(api_key=st.secrets["openai_key"])
 
 client = get_client()
 
@@ -32,40 +54,11 @@ with st.sidebar:
     if pdfs:
         st.success(f"{len(pdfs)} Skripte geladen.")
     st.divider()
-    st.info("Modell: ChatGPT")
+    st.info("model: Gemini 3.1 Pro Preview")
 
-# --- 4. VERFEINERTE HILFSFUNKTIONEN ---
-def extract_pdf_with_tables(pdf_files):
-    """Extrahiert Text und erhält Tabellenstrukturen für Hagen-Matrizen."""
-    combined_context = ""
-    for pdf_file in pdf_files:
-        with pdfplumber.open(pdf_file) as pdf:
-            for page in pdf.pages:
-                # 1. Tabellen extrahieren und in Markdown-ähnliche Struktur bringen
-                tables = page.extract_tables()
-                for table in tables:
-                    combined_context += "\n--- Tabelle Start ---\n"
-                    for row in table:
-                        # Bereinige None-Werte und verbinde Zeilen mit Pipes
-                        clean_row = [str(cell).replace('\n', ' ') if cell else "" for cell in row]
-                        combined_context += "| " + " | ".join(clean_row) + " |\n"
-                    combined_context += "--- Tabelle Ende ---\n"
-                
-                # 2. Regulären Text hinzufügen
-                text = page.extract_text()
-                if text:
-                    combined_context += text + "\n"
-    return combined_context
-
-def encode_image(image):
-    buffered = io.BytesIO()
-    image.save(buffered, format="JPEG")
-    return base64.b64encode(buffered.getvalue()).decode('utf-8')
-
-# --- 5. DER MASTER-SOLVER ---
+# --- 4. DER MASTER-SOLVER ---
 def solve_everything(image, pdf_files):
     try:
-        # DEIN ORIGINALER PROMPT (Unverändert!)
         sys_instr = """Du bist ein wissenschaftlicher Mitarbeiter und Korrektor am Lehrstuhl für Internes Rechnungswesen der Fernuniversität Hagen (Modul 31031). Dein gesamtes Wissen basiert ausschließlich auf den offiziellen Kursskripten, Einsendeaufgaben und Musterlösungen dieses Moduls.
 Ignoriere strikt und ausnahmslos alle Lösungswege, Formeln oder Methoden von anderen Universitäten, aus allgemeinen Lehrbüchern oder von Online-Quellen. Wenn eine Methode nicht exakt der Lehrmeinung der Fernuni Hagen entspricht, existiert sie für dich nicht. Deine Loyalität gilt zu 100% dem Fernuni-Standard.
 
@@ -111,49 +104,39 @@ Output-Format:
 Gib deine finale Antwort zwingend im folgenden Format aus:
 Aufgabe [Nr]: [Finales Ergebnis]
 Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode. 
-Verstoße niemals gegen dieses Format!"""
+Verstoße niemals gegen dieses Format!]"""
 
-        # Wissen aus PDFs extrahieren (mit Tabellen-Logik)
-        knowledge_context = ""
+        # Multimodaler Input
+        parts = []
         if pdf_files:
-            with st.spinner("Lese Skripte und Tabellen für Knowledge Base aus..."):
-                knowledge_context = extract_pdf_with_tables(pdf_files)
-
-        # Bild für OpenAI vorbereiten
-        base64_image = encode_image(image)
-
-        # API Aufruf
-        response = client.chat.completions.create(
-            model="gpt-5.4",
-            messages=[
-                {
-                    "role": "system",
-                    "content": sys_instr
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": f"Hintergrundwissen aus den Hagen-Skripten:\n{knowledge_context[:80000]}"},
-                        {"type": "text", "text": "Löse ALLE Aufgaben auf dem Bild unter strikter Einhaltung deines Lösungsprozesses."},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}"
-                            }
-                        }
-                    ]
-                }
-            ],
-            temperature=0.0,
-            max_completion_tokens=4096
-        )
+            for pdf in pdf_files:
+                parts.append(types.Part.from_bytes(data=pdf.read(), mime_type="application/pdf"))
         
-        return response.choices[0].message.content
+        # Bildbytes
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format='JPEG')
+        parts.append(types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg"))
+        
+        # Auftrag
+        parts.append("Löse ALLE Aufgaben auf dem Bild unter strikter Einhaltung deines Lösungsprozesses")
+
+        # API Aufruf mit Gemini 3.1 Pro Preview & Thinking
+        response = client.models.generate_content(
+            model="gemini-3.1-pro-preview",
+            contents=parts,
+            config=types.GenerateContentConfig(
+                system_instruction=sys_instr,
+                temperature=0,
+                max_output_tokens=15000,
+            )
+        )
+
+        return response.text
 
     except Exception as e:
         return f"Fehler: {str(e)}"
 
-# --- 6. UI LAYOUT ---
+# --- 5. UI LAYOUT ---
 col1, col2 = st.columns([1, 1])
 
 with col1:
@@ -163,12 +146,12 @@ with col1:
         if "rot" not in st.session_state: st.session_state.rot = 0
         if st.button("🔄 Bild drehen"): st.session_state.rot = (st.session_state.rot + 90) % 360
         img = img.rotate(-st.session_state.rot, expand=True)
-        st.image(img, use_container_width=True)
+        st.image(img, width="stretch")
 
 with col2:
     if uploaded_file:
         if st.button("Aufgaben lösen", type="primary"):
-            with st.spinner("ChatGPT löst..."):
+            with st.spinner("Gemini 3.1 Pro löst..."):
                 result = solve_everything(img, pdfs)
                 st.markdown("### Ergebnis")
                 st.write(result)
