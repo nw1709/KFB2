@@ -112,7 +112,7 @@ Output-Format:
 Gib deine finale Antwort zwingend im folgenden Format aus:
 Aufgabe [Nr]: [Finales Ergebnis]
 Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode. 
-Verstoße niemals gegen dieses Format!]"""
+Verstoße niemals gegen dieses Format!"""
 
         # Multimodaler Input
         parts = []
