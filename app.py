@@ -8,7 +8,7 @@ import json
 from google.oauth2 import service_account
 
 # --- 1. UI SETUP ---
-st.set_page_config(layout="wide", page_title="KFB2 - Interaktiv", page_icon="🦊")
+st.set_page_config(layout="wide", page_title="KFB1 - Interaktiv", page_icon="🦊")
 
 st.markdown(f'''
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
@@ -16,10 +16,10 @@ st.markdown(f'''
 <meta name="theme-color" content="#FF6600"> 
 ''', unsafe_allow_html=True)
 
-st.title("🦊 KFB2")
+st.title("🦊 KFB1: Chat-Modus")
 
 def get_client():
-    # 1. VERSUCH: VERTEX AI (Enterprise-Schiene)
+    # 1. VERSUCH
     if 'gcp_service_account' in st.secrets:
         try:
             service_account_info = json.loads(st.secrets["gcp_service_account"])
@@ -45,7 +45,7 @@ def get_client():
                 http_options=types.HttpOptions(retry_options=retry_options, timeout=300.0)
             )
         except Exception as e:
-            st.warning(f"Vertex AI Start fehlgeschlagen, versuche Fallback... ({e})")
+            st.warning(f"API fehlgeschlagen, versuche Fallback... ({e})")
 
     # 2. VERSUCH: STANDARD API KEY (Backup-Schiene)
     if 'gemini_key' in st.secrets:
@@ -74,7 +74,7 @@ with st.sidebar:
         st.rerun()
     
     st.divider()
-    st.info("model: Gemini 3.5 Flash")
+    st.info("model: Gemini 3.1 Pro Preview (mit Retry & Memory)")
 
 # --- 5. DER MASTER-SOLVER (LOGIK) ---
 def solve_everything(image, pdf_files, user_input):
@@ -128,11 +128,13 @@ d) Meister-Regel zur finalen Bewertung (Absolute Priorität):  Die Kernprinzip
 e) Zwingende Vorab-Dokumentation:  Bevor das finale Ausgabeformat generiert wird, MUSS zwingend ein strukturierter Textabschnitt mit der Überschrift 'Prüfungsprotokoll' genutzt werden. In diesem Block muss für JEDE der fünf Optionen (A, B, C, D, E) zwingend folgende Struktur eingehalten werden:
 	1. [Anomalie-Check]: Fällt diese Aussage unter eine der "FERNUNI-HAGEN ANOMALIEN"? (Ja/		Nein).
 	2. [Objekt-Rollen-Check (Neu)]: Welche Rolle spielen die in der Option genannten Objekte im Text? 	(Input/Verbrauchsfaktor, Input/Potenzialfaktor oder Output/Endprodukt?)
-	3. [Eigene Herleitung / Skript-Abgleich]: Führe die Rechnung selbst durch ODER zitiere die exakte 		Definition im Skript 31031. 	4. [Strikter Zeichenabgleich]: Stimmt das Ergebnis aus Schritt 3 ZEICHEN FÜR ZEICHEN mit der 		Behauptung in der Option überein? (Ja/Nein - Wenn Nein, zwingend Falsch).
-	5. [Eigene Herleitung / Skript-Abgleich]: Führe die Rechnung selbst durch ODER zitiere die exakte 		Definition. WICHTIG (Token-Effizienz): Fasse dich hierbei extrem kurz und präzise. Zeige nur die 		mathematischen Kernschritte (z.B. "a_Z1,E = 400/200 = 2"). Verzichte auf ausschweifende textliche 		Erklärungen des Rechenwegs, um das Token-Limit der Antwort nicht zu sprengen.
-	6. [Bewertung]: Wahr oder Falsch.
+	3. [Behauptung der Option]: (Zitiere extrem kurz, was die Option faktisch behauptet, z.B. 	"Behauptung: Energie = Potenzialfaktor“).
+	4. [Faktische Wahrheit laut Skript]: (Leite die Wahrheit her, z.B. "Wahrheit: Energie geht unter = 			Verbrauchsfaktor“).
+	5. [Mechanischer Abgleich]: Stimmt die Behauptung (Schritt 3) mit der Wahrheit (Schritt 4) überein? 	(Ja / Nein).
+	6. [Bewertung]: (Wenn Schritt 5 = Ja → Wahr. Wenn Schritt 5 = Nein → Falsch).
 	7. [Begründung]: Kurzer Stichpunkt.
-f) Strikter Zeichenabgleich bei mathematischen Termen (Anti-Hineininterpretations-Regel): Wenn eine Antwortoption eine mathematische Formel oder einen Term enthält (z.B. 11,5x2+5x11,5x2+5x), musst du die Formel im ersten Schritt völlig unabhängig herleiten. Im zweiten Schritt musst du dein Ergebnis ZEICHEN FÜR ZEICHEN mit dem Text in der Option abgleichen. Beispiel: Wenn deine Herleitung 11,5x+511,5x+5 ergibt, in der Option aber 11,5x+5x11,5x+5x steht, ist die Option ZWINGEND FALSCH. Du darfst NIEMALS annehmen, dass es sich um einen "Tippfehler" in der Klausur handelt. Du darfst NIEMALS eine falsche Formel in der Option als "Wahr" bewerten, nur weil dein eigener Rechenweg richtig war. Abweichung um ein einziges Zeichen = FALSCH.teht, ist die Option ZWINGEND FALSCH. Du darfst NIEMALS annehmen, dass es sich um einen "Tippfehler" in der Klausur handelt. Du darfst NIEMALS eine falsche Formel in der Option als "Wahr" bewerten, nur weil dein eigener Rechenweg richtig war. Abweichung um ein einziges Zeichen = FALSCH. 
+f) Strikter Zeichenabgleich bei mathematischen Termen (Anti-Hineininterpretations-Regel): Wenn eine Antwortoption eine mathematische Formel oder einen Term enthält (z.B. 11,5x2+5x11,5x2+5x), musst du die Formel im ersten Schritt völlig unabhängig herleiten. Im zweiten Schritt musst du dein Ergebnis ZEICHEN FÜR ZEICHEN mit dem Text in der Option abgleichen. Beispiel: Wenn deine Herleitung 11,5x+511,5x+5 ergibt, in der Option aber 11,5x+5x11,5x+5x steht, ist die Option ZWINGEND FALSCH. Du darfst NIEMALS annehmen, dass es sich um einen "Tippfehler" in der Klausur handelt. Du darfst NIEMALS eine falsche Formel in der Option als "Wahr" bewerten, nur weil dein eigener Rechenweg richtig war. Abweichung um ein einziges Zeichen = FALSCH.teht, ist die Option ZWINGEND FALSCH. Du darfst NIEMALS annehmen, dass es sich um einen "Tippfehler" in der Klausur handelt. Du darfst NIEMALS eine falsche Formel in der Option als "Wahr" bewerten, nur weil dein eigener Rechenweg richtig war. Abweichung um ein einziges Zeichen = FALSCH.
+g) Anti-Selbstbestätigungs-Regel (Claim vs. Fact): Du darfst niemals deine eigene fachliche Herleitung bewerten, sondern ausnahmslos die Behauptung der Antwortoption. Wenn deine Herleitung ergibt, dass Objekt X die Eigenschaft Y hat, die Option aber Eigenschaft Z behauptet, ist die Option ZWINGEND FALSCH. Um dies zu garantieren, ist im Prüfungsprotokoll ein expliziter, dreistufiger Abgleich (Behauptung → Fakt → Match) durchzuführen. 
 
 4. Finale Synthese & Konsistenz-Check: 
 Fasse alle als "Richtig" bewerteten Optionen zusammen. 
@@ -162,8 +164,7 @@ OUTPUT-FORMAT:
 - Gib deine finale Antwort zwingend im folgenden Format aus:
 Aufgabe [Nr]: [Finales Ergebnis]
 Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode. 
-Verstoße niemals gegen dieses Format! 
-- Prüfe intern: "Habe ich das Prüfungsprotokoll für Option E abgeschlossen?" Erst wenn die Antwort JA lautet, generiere zwingend und ausschließlich folgendes Format: Aufgabe [Nr]: [Finales Ergebnis] Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode.] Verstoße niemals gegen dieses Format!"""
+Verstoße niemals gegen dieses Format!  - Prüfe intern: "Habe ich das Prüfungsprotokoll für Option E abgeschlossen?" Erst wenn die Antwort JA lautet, generiere zwingend und ausschließlich folgendes Format: Aufgabe [Nr]: [Finales Ergebnis] Begründung: [Kurze 1-Satz-Erklärung des Ergebnisses basierend auf der Fernuni-Methode.] Verstoße niemals gegen dieses Format!"""
 
     # Multimodaler Input
         parts = []
@@ -227,7 +228,7 @@ with col2:
                 st.markdown(message["content"])
 
 # --- 7. CHAT INPUT (AM UNTEREN RAND) ---
-if prompt := st.chat_input("Chat..."):
+if prompt := st.chat_input("Löse die Aufgaben oder gib mir eine Korrektur-Anweisung..."):
     if not uploaded_file:
         st.warning("Bitte lade zuerst ein Klausurblatt hoch!")
     else:
@@ -240,7 +241,6 @@ if prompt := st.chat_input("Chat..."):
         
         with st.chat_message("assistant"):
                 with st.spinner("Gemini löst..."):
-                    # FIX: Jetzt werden alle 3 benötigten Variablen übergeben
                     answer = solve_everything(img, pdfs, prompt)
                     st.markdown(answer)
                     st.session_state.messages.append({"role": "assistant", "content": answer})
