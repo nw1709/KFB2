@@ -74,7 +74,7 @@ with st.sidebar:
         st.rerun()
     
     st.divider()
-    st.info("model: Gemini 3.1 Pro Preview (mit Retry & Memory)")
+    st.info("model: Gemini 3.5 Flash (mit Retry & Memory)")
 
 # --- 5. DER MASTER-SOLVER (LOGIK) ---
 def solve_everything(image, pdf_files, user_input):
