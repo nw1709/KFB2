@@ -8,7 +8,7 @@ import json
 from google.oauth2 import service_account
 
 # --- 1. UI SETUP ---
-st.set_page_config(layout="wide", page_title="KFB1 - Interaktiv", page_icon="🦊")
+st.set_page_config(layout="wide", page_title="KFB2 - Interaktiv", page_icon="🦊")
 
 st.markdown(f'''
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
@@ -16,7 +16,7 @@ st.markdown(f'''
 <meta name="theme-color" content="#FF6600"> 
 ''', unsafe_allow_html=True)
 
-st.title("🦊 KFB1: Chat-Modus")
+st.title("🦊 KFB2")
 
 def get_client():
     # 1. VERSUCH
