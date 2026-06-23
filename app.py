@@ -4,7 +4,7 @@ from google.genai import types
 from PIL import Image
 import io
 
-st.set_page_config(layout="wide", page_title="KFB3", page_icon="🦊")
+st.set_page_config(layout="wide", page_title="KFB2", page_icon="🦊")
 
 st.markdown(f'''
 <link rel="apple-touch-icon" sizes="180x180" href="https://em-content.zobj.net/thumbs/120/apple/325/fox-face_1f98a.png">
@@ -184,7 +184,7 @@ with col2:
         if st.button("Aufgaben lösen & Verlauf auto-clear)", type="primary", use_container_width=True):
             st.session_state.messages = []
             
-            auto_prompt = "Löse ALLE Aufgaben auf den hochgeladenen Bildern unter strikter Einhaltung deines Lösungsprozesses."
+            auto_prompt = "Löse alle Aufgaben auf den hochgeladenen Bildern. Nutze zwingend deinen Code-Interpreter für alle Rechenwege. WICHTIG FÜR DIE TEXTAUSGABE: Fasse dich extrem kurz! Schreibe keine Zwischenschritte in den Text. Gib als Textaussgabe AUSSCHLIESSLICH das Format 'Aufgabe [Nr]: [Ergebnis]' und einen Satz Begründung aus."
             st.session_state.messages.append({"role": "user", "content": auto_prompt})
             
             with st.spinner("Gemini rechnet..."):
