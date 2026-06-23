@@ -4,10 +4,7 @@ from google.genai import types
 from PIL import Image
 import io
 import os
-import json
-from google.oauth2 import service_account
 
-# --- 1. UI SETUP ---
 st.set_page_config(layout="wide", page_title="KFB2", page_icon="🦊")
 
 st.markdown(f'''
@@ -19,67 +16,35 @@ st.markdown(f'''
 st.title("🦊 KFB2")
 
 def get_client():
-    # 1. VERSUCH
-    if 'gcp_service_account' in st.secrets:
-        try:
-            service_account_info = json.loads(st.secrets["gcp_service_account"])
-            credentials = service_account.Credentials.from_service_account_info(
-                service_account_info,
-                scopes=['https://www.googleapis.com/auth/cloud-platform']
-            )
-            
-            # Retry-Logik für maximale Stabilität
-            retry_options = types.HttpRetryOptions(
-                initial_delay=2.0,
-                attempts=6,
-                exp_base=2.0,
-                max_delay=30.0,
-                http_status_codes=[429, 500, 502, 503, 504]
-            )
-            
-            return genai.Client(
-                vertexai=True, 
-                project=service_account_info["project_id"], 
-                location="europe-west3", 
-                credentials=credentials,
-                http_options=types.HttpOptions(retry_options=retry_options, timeout=300.0)
-            )
-        except Exception as e:
-            st.warning(f"API fehlgeschlagen, versuche Fallback... ({e})")
+    if 'gemini_key' not in st.secrets:
+        st.error("API Key fehlt. Bitte in den Secrets hinterlegen.")
+        st.stop()
+    
+    retry_options = types.HttpRetryOptions(
+        initial_delay=2.0,  # 2 Sekunden warten nach dem ersten Fehler
+        attempts=6,         # Insgesamt 6 Versuche (ca. 1-2 Minuten Puffer)
+        exp_base=2.0,       # Zeit zwischen Versuchen verdoppelt sich
+        max_delay=30.0,     # Maximal 30s Pause zwischen zwei Versuchen
+        http_status_codes=[429, 500, 502, 503, 504] # Fehler, bei denen wiederholt wird
+    )
 
-    # 2. VERSUCH: STANDARD API KEY (Backup-Schiene)
-    if 'gemini_key' in st.secrets:
-        return genai.Client(api_key=st.secrets["gemini_key"])
-        
-    # Wenn beides fehlt:
-    st.error("🚨 Keine Zugangsdaten gefunden! Bitte gcp_service_account oder gemini_key in den Secrets hinterlegen.")
-    st.stop()
+    return genai.Client(
+        api_key=st.secrets["gemini_key"],
+        http_options=types.HttpOptions(retry_options=retry_options)
+    )
 
-# Client initialisieren
 client = get_client()
 
-# --- 3. SESSION STATE (DAS CHAT-GEDÄCHTNIS) ---
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# --- 4. SIDEBAR ---
 with st.sidebar:
     st.header("📚 Knowledge Base")
     pdfs = st.file_uploader("PDF-Skripte hochladen", type=["pdf"], accept_multiple_files=True)
     if pdfs:
-       st.success(f"{len(pdfs)} Skripte geladen.")
+        st.success(f"{len(pdfs)} Skripte geladen.")
     st.divider()
-    if st.button("🗑️ Chat-Verlauf löschen", width="stretch"):
-        st.session_state.messages = []
-        st.rerun()
-    
-    st.divider()
-    st.info("model: Gemini 3.1 Pro Preview (mit Retry & Memory)")
+    st.info("model: Gemini 3.5 Flash")
 
-# --- 5. DER MASTER-SOLVER (LOGIK) ---
-def solve_everything(image, pdf_files, user_input):
+def solve_everything(image, pdf_files):
     try:
-        # DEIN ORIGINAL SYSTEM PROMPT
         sys_instr = """Du bist ein präziser Assistent für Modul 31031 
 (Internes Rechnungswesen, FernUniversität Hagen).
 
@@ -129,33 +94,21 @@ Begründung: [Ein Satz auf Basis der FernUni-Methode]
 
 FORMAT: Deutsch, fachlich sauber, Schritt für Schritt."""
 
-    # Multimodaler Input
         parts = []
         if pdf_files:
             for pdf in pdf_files:
-                # Wir lesen die PDF-Daten einmal ein
                 pdf_data = pdf.read()
                 parts.append(types.Part.from_bytes(data=pdf_data, mime_type="application/pdf"))
-                # Zeiger zurücksetzen, falls die Funktion mehrfach aufgerufen wird
                 pdf.seek(0)
         
-        # Bildbytes
         img_byte_arr = io.BytesIO()
         image.save(img_byte_arr, format='JPEG')
-        parts.append(types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg"))	
-		
-        parts.append("Löse ALLE Aufgaben auf dem Bild unter strikter Einhaltung deines Lösungsprozesses")
+        parts.append(types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg"))
         
-
-        # Historie hinzufügen für das "Gedächtnis"
-        for m in st.session_state.messages:
-            parts.append(f"{m['role']}: {m['content']}")
-            
-        # Neue Nachricht
-        parts.append(f"user: {user_input}")
+        parts.append("Löse ALLE Aufgaben auf dem Bild unter strikter Einhaltung deines Lösungsprozesses")
 
         response = client.models.generate_content(
-            model="gemini-3.1-pro-preview",
+            model="gemini-3.5-flash",
             contents=parts,
             config=types.GenerateContentConfig(
                 system_instruction=sys_instr,
@@ -163,47 +116,42 @@ FORMAT: Deutsch, fachlich sauber, Schritt für Schritt."""
                 max_output_tokens=15000,
             )
         )
-        return response.text
+
+        if response.candidates and response.candidates[0].content.parts:
+            text_parts = [part.text for part in response.candidates[0].content.parts if part.text is not None]
+            if text_parts:
+                return "".join(text_parts)
+            else:
+                return "Fehler: Die KI hat eine unerwartete Antwortstruktur zurückgegeben (kein Text gefunden)."
+        
+        return "Fehler: Keine Antwort von der KI erhalten."
+
     except Exception as e:
+        # Spezifische Fehlermeldung für den User
+        if "503" in str(e) or "overloaded" in str(e).lower():
+            return "Fehler: Die Google-Server sind aktuell überlastet. Trotz 6 Wiederholungsversuchen konnte keine Antwort geladen werden. Bitte in 2 Minuten erneut versuchen."
         return f"Fehler: {str(e)}"
 
-# --- 6. UI LAYOUT ---
-col1, col2 = st.columns([1, 1.2])
+# --- 5. UI LAYOUT ---
+col1, col2 = st.columns([1, 1])
 
 with col1:
     uploaded_file = st.file_uploader("Klausurblatt hochladen...", type=["png", "jpg", "jpeg"])
     if uploaded_file:
         img = Image.open(uploaded_file).convert('RGB')
         if "rot" not in st.session_state: st.session_state.rot = 0
-        if st.button("🔄 Bild drehen"):
-            st.session_state.rot = (st.session_state.rot + 90) % 360
-            st.rerun()
+        if st.button("🔄 Bild drehen"): st.session_state.rot = (st.session_state.rot + 90) % 360
         img = img.rotate(-st.session_state.rot, expand=True)
         st.image(img, width="stretch")
 
 with col2:
-    # Chat History anzeigen
-    st.subheader("Analyse & Chat")
-    chat_container = st.container(height=600)
-    with chat_container:
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-
-# --- 7. CHAT INPUT (AM UNTEREN RAND) ---
-if prompt := st.chat_input("Löse die Aufgaben oder gib mir eine Korrektur-Anweisung..."):
-    if not uploaded_file:
-        st.warning("Bitte lade zuerst ein Klausurblatt hoch!")
+    if uploaded_file:
+        if st.button("Aufgaben lösen", type="primary"):
+            status_container = st.empty()
+            with status_container.status("Gemini 3.5 Flash analysiert...", expanded=True) as status:
+                result = solve_everything(img, pdfs)
+                st.markdown("### Ergebnis")
+                st.write(result)
+                status.update(label="Analyse abgeschlossen!", state="complete", expanded=False)
     else:
-        # User Nachricht anzeigen
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with col2: # In der rechten Spalte anzeigen
-             with chat_container:
-                 with st.chat_message("user"):
-                     st.markdown(prompt)
-        
-        with st.chat_message("assistant"):
-                with st.spinner("Gemini löst..."):
-                    answer = solve_everything(img, pdfs, prompt)
-                    st.markdown(answer)
-                    st.session_state.messages.append({"role": "assistant", "content": answer})
+        st.info("Bitte lade links ein Bild hoch.")
