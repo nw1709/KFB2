@@ -34,7 +34,8 @@ def get_client():
 
     return genai.Client(
         api_key=st.secrets["gemini_key"],
-        http_options=types.HttpOptions(retry_options=retry_options)
+        # LÖSUNG 1: 300.000 Millisekunden = 5 Minuten Zeit für Gemini 3.1 Pro
+        http_options=types.HttpOptions(retry_options=retry_options, timeout=300000)
     )
 
 client = get_client()
@@ -143,13 +144,16 @@ Begründung: [Ein Satz auf Basis der FernUni-Methode]"""
             for part in response.candidates[0].content.parts:
                 if hasattr(part, 'text') and part.text:
                     output_text += part.text
+                # LÖSUNG 2: Fangnetz für den abgebrochenen Python-Code hinzugefügt
+                elif hasattr(part, 'executable_code') and part.executable_code:
+                    raw_output += f"\n\n**🤖 Abgebrochener Python-Code:**\n```python\n{part.executable_code.code}\n```\n"
                 elif hasattr(part, 'code_execution_result') and part.code_execution_result:
                     raw_output += f"\n> *[Taschenrechner liefert: {part.code_execution_result.output.strip()}]*\n"
             
             if output_text.strip():
                 return output_text
             elif raw_output.strip():
-                return f"AI hat im Hintergrund gerechnet, aber vergessen, eine Text-Antwort zu formulieren. Hier ist das rohe Ergebnis:*\n{raw_output}"
+                return f"⚠️ **Achtung:** Die KI hat den Text nicht fertig formuliert (vermutlich wegen eines Timeouts beim Rechnen). Hier ist der rohe Zwischenstand der Maschine:\n{raw_output}"
             else:
                 return "Fehler: Die KI hat eine leere Antwort zurückgegeben."
         
@@ -184,7 +188,7 @@ with col2:
         if st.button("Aufgaben lösen & Verlauf auto-clear)", type="primary", use_container_width=True):
             st.session_state.messages = []
             
-            auto_prompt = "Löse alle Aufgaben auf den hochgeladenen Bildern. Nutze zwingend deinen Code-Interpreter für alle Rechenwege. WICHTIG FÜR DIE TEXTAUSGABE: Fasse dich extrem kurz! Schreibe keine Zwischenschritte in den Text. Gib als Textaussgabe AUSSCHLIESSLICH das Format 'Aufgabe [Nr]: [Ergebnis]' und einen Satz Begründung aus."
+            auto_prompt = "Löse alle Aufgaben auf den hochgeladenen Bildern. Nutze zwingend deinen Code-Interpreter für alle Rechenwege. WICHTIG FÜR DIE TEXTAUSGABE: Fasse dich extrem kurz! Schreibe keine Zwischenschritte in den Text. Gib als Textausgabe AUSSCHLIESSLICH das Format 'Aufgabe [Nr]: [Ergebnis]' und einen Satz Begründung aus."
             st.session_state.messages.append({"role": "user", "content": auto_prompt})
             
             with st.spinner("Gemini rechnet..."):
