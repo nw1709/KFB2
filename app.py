@@ -12,7 +12,7 @@ st.markdown(f'''
 <meta name="theme-color" content="#FF6600"> 
 ''', unsafe_allow_html=True)
 
-st.title("🦊 KFB3")
+st.title("🦊 KFB2")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -50,7 +50,7 @@ with st.sidebar:
         st.rerun()
         
     st.divider()
-    st.info("model: Gemini 3.5 Flash")
+    st.info("Gemini 3.1 pro preview")
 
 def generate_response(prompt, images, pdf_files):
     try:
@@ -160,7 +160,6 @@ Begründung: [Ein Satz auf Basis der FernUni-Methode]"""
             return "Fehler: Die Google-Server sind aktuell überlastet. Bitte in 2 Minuten erneut versuchen."
         return f"Fehler: {str(e)}"
 
-# --- 6. UI LAYOUT ---
 col1, col2 = st.columns([1, 1.2])
 
 with col1:
