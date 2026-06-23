@@ -45,12 +45,12 @@ with st.sidebar:
 
 def solve_everything(image, pdf_files):
     try:
-        # NEU: Das strikte Tool-Verbot wurde in den Prompt aufgenommen
         sys_instr = """Du bist ein präziser Assistent für Modul 31031 
 (Internes Rechnungswesen, FernUniversität Hagen).
 
 TECHNISCHE VORGABE - ABSOLUTES TOOL-VERBOT:
-Verwende KEINE function_calls, keine Code-Execution und keine externen Tools. 
+Verwende KEINE function_calls, keine Code-Execution, kein Google Search und keine externen Tools. 
+Alle Unternehmen (z.B. FITT AG) und Produkte in den Aufgaben sind FIKTIV. Suche niemals im Internet danach! 
 Du musst alle Berechnungen selbstständig durchführen und direkt als reinen Text ausgeben!
 
 PRIORITÄT 1 – DOKUMENTKONTEXT:
@@ -119,10 +119,10 @@ FORMAT: Deutsch, fachlich sauber, Schritt für Schritt."""
                 system_instruction=sys_instr,
                 temperature=0,
                 max_output_tokens=15000,
+                tools=[] # <-- Das ist der harte Riegel für die Google-Suche
             )
         )
 
-        # NEU: Verbesserte Fehlerabfrage für die reine Textvariante
         if response.candidates and response.candidates[0].content:
             response_parts = response.candidates[0].content.parts
             text_result = "".join([p.text for p in response_parts if hasattr(p, 'text') and p.text])
