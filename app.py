@@ -21,11 +21,11 @@ def get_client():
         st.stop()
     
     retry_options = types.HttpRetryOptions(
-        initial_delay=2.0,  # 2 Sekunden warten nach dem ersten Fehler
-        attempts=6,         # Insgesamt 6 Versuche (ca. 1-2 Minuten Puffer)
-        exp_base=2.0,       # Zeit zwischen Versuchen verdoppelt sich
-        max_delay=30.0,     # Maximal 30s Pause zwischen zwei Versuchen
-        http_status_codes=[429, 500, 502, 503, 504] # Fehler, bei denen wiederholt wird
+        initial_delay=2.0,  
+        attempts=6,         
+        exp_base=2.0,       
+        max_delay=30.0,     
+        http_status_codes=[429, 500, 502, 503, 504] 
     )
 
     return genai.Client(
@@ -41,12 +41,17 @@ with st.sidebar:
     if pdfs:
         st.success(f"{len(pdfs)} Skripte geladen.")
     st.divider()
-    st.info("model: Gemini 3.5 Flash")
+    st.info("model: Gemini 3.5 Flash (Pure Text)")
 
 def solve_everything(image, pdf_files):
     try:
+        # NEU: Das strikte Tool-Verbot wurde in den Prompt aufgenommen
         sys_instr = """Du bist ein präziser Assistent für Modul 31031 
 (Internes Rechnungswesen, FernUniversität Hagen).
+
+TECHNISCHE VORGABE - ABSOLUTES TOOL-VERBOT:
+Verwende KEINE function_calls, keine Code-Execution und keine externen Tools. 
+Du musst alle Berechnungen selbstständig durchführen und direkt als reinen Text ausgeben!
 
 PRIORITÄT 1 – DOKUMENTKONTEXT:
 Wenn die relevante Information in den Workspace-Dokumenten 
@@ -117,19 +122,21 @@ FORMAT: Deutsch, fachlich sauber, Schritt für Schritt."""
             )
         )
 
-        if response.candidates and response.candidates[0].content.parts:
-            text_parts = [part.text for part in response.candidates[0].content.parts if part.text is not None]
-            if text_parts:
-                return "".join(text_parts)
+        # NEU: Verbesserte Fehlerabfrage für die reine Textvariante
+        if response.candidates and response.candidates[0].content:
+            response_parts = response.candidates[0].content.parts
+            text_result = "".join([p.text for p in response_parts if hasattr(p, 'text') and p.text])
+            
+            if text_result:
+                return text_result
             else:
-                return "Fehler: Die KI hat eine unerwartete Antwortstruktur zurückgegeben (kein Text gefunden)."
+                return f"Fehler: Die KI hat trotz Verbot versucht, ein Tool auszuführen. \nInterne Rückgabe: {response_parts}"
         
         return "Fehler: Keine Antwort von der KI erhalten."
 
     except Exception as e:
-        # Spezifische Fehlermeldung für den User
         if "503" in str(e) or "overloaded" in str(e).lower():
-            return "Fehler: Die Google-Server sind aktuell überlastet. Trotz 6 Wiederholungsversuchen konnte keine Antwort geladen werden. Bitte in 2 Minuten erneut versuchen."
+            return "Fehler: Die Google-Server sind aktuell überlastet. Bitte in 2 Minuten erneut versuchen."
         return f"Fehler: {str(e)}"
 
 # --- 5. UI LAYOUT ---
