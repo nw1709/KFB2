@@ -3,7 +3,6 @@ from google import genai
 from google.genai import types
 from PIL import Image
 import io
-import os
 
 st.set_page_config(layout="wide", page_title="KFB2", page_icon="🦊")
 
@@ -14,6 +13,11 @@ st.markdown(f'''
 ''', unsafe_allow_html=True)
 
 st.title("🦊 KFB2")
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "rot" not in st.session_state: 
+    st.session_state.rot = 0
 
 def get_client():
     if 'gemini_key' not in st.secrets:
@@ -40,125 +44,166 @@ with st.sidebar:
     pdfs = st.file_uploader("PDF-Skripte hochladen", type=["pdf"], accept_multiple_files=True)
     if pdfs:
         st.success(f"{len(pdfs)} Skripte geladen.")
+    
+    if st.button("🗑️ Chat-Verlauf manuell löschen", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
+        
     st.divider()
-    st.info("model: Gemini 3.5 Flash (Pure Text)")
+    st.info("model: Gemini 3.5 Flash")
 
-def solve_everything(image, pdf_files):
+def generate_response(prompt, images, pdf_files):
     try:
         sys_instr = """Du bist ein präziser Assistent für Modul 31031 
 (Internes Rechnungswesen, FernUniversität Hagen).
-
-TECHNISCHE VORGABE - ABSOLUTES TOOL-VERBOT:
-Verwende KEINE function_calls, keine Code-Execution, kein Google Search und keine externen Tools. 
-Alle Unternehmen (z.B. FITT AG) und Produkte in den Aufgaben sind FIKTIV. Suche niemals im Internet danach! 
-Du musst alle Berechnungen selbstständig durchführen und direkt als reinen Text ausgeben!
 
 PRIORITÄT 1 – DOKUMENTKONTEXT:
 Wenn die relevante Information in den Workspace-Dokumenten 
 vorhanden ist, beantworte ausschließlich darauf basierend.
 
 PRIORITÄT 2 – FACHWISSEN MIT KENNZEICHNUNG:
-Wenn der Dokumentkontext fehlt oder unvollständig ist, 
-nutze dein Wissen zu Modul 31031 – kennzeichne diese 
-Stellen mit [Fachwissen].
+Wenn Dokumentkontext fehlt, nutze dein Wissen zu Modul 31031 – kennzeichne 
+diese Stellen mit [Fachwissen].
 
 ABSOLUTES VERBOT:
-Erfinde niemals fehlende Werte (z. B. fixe Kosten, 
-Bestandswerte, Mengenvorgaben). Wenn Werte in der 
-Aufgabe fehlen, weise explizit darauf hin und frage 
+Erfinde niemals fehlende Werte. Wenn Werte fehlen, frage 
 nach – rechne NICHT mit angenommenen Beispielwerten.
+
+WICHTIGE REGELN ZUR CODE-EXECUTION (Zwingend beachten!):
+1. ISOLIERTE UMGEBUNG: Dein Python-Code hat absolut KEINEN Zugriff auf die hochgeladenen Bilder (wie z.B. .jpeg) oder PDFs!
+2. DER RICHTIGE WORKFLOW: Du musst zuerst mit deinen Fähigkeiten zur Bilderkennung alle Vektoren, Matrizen und Zahlen aus dem Klausurblatt ablesen. 
+3. HARDCODING: Trage diese abgelesenen Zahlen dann als feste Variablen (Arrays/Listen) in deinen Python-Code ein, um die Mathematik zu lösen. Versuche NIEMALS, im Code eine Datei zu öffnen!
+4. KEIN CHAT-GEPLÄNKEL: Kündige dein Vorhaben nicht an. Sätze wie "I will write a python script..." sind strengstens verboten. Führe den Code sofort aus!
+5. SPRACHE: Antworte immer und ausnahmslos auf Deutsch.
 
 LÖSUNGSPROZESS:
 1. Aufgabe analysieren – alle gegebenen Werte auflisten
 2. Fehlende Werte sofort benennen – nicht ergänzen
 3. Methode aus Modul 31031 anwenden
-4. Schritt für Schritt rechnen
+4. Code Execution ausführen (mit den hardcodierten Zahlen!)
 5. Ergebnis klar ausgeben
 
-BEI MULTIPLE-CHOICE / WAHR-FALSCH (Prüfungsprotokoll):
-Bewerte jede Option zwingend einzeln im folgenden Format:
-
+BEI MULTIPLE-CHOICE / WAHR-FALSCH:
+Bewerte jede Option zwingend einzeln:
 Option [Buchstabe]:
-1. Anomalie-Check: Fällt diese Aussage unter eine 
-   bekannte FernUni-Hagen-Besonderheit? Ja/Nein.
-2. Behauptung: Was behauptet die Option konkret?
+1. Anomalie-Check: FernUni-Besonderheit? Ja/Nein.
+2. Behauptung: Was behauptet die Option?
 3. Fakt laut Skript/Modul: Was ist die korrekte Aussage?
 4. Abgleich: Stimmt Behauptung mit Fakt überein? Ja/Nein.
 5. Bewertung: Wahr / Falsch
 6. Begründung: Ein Satz.
 
-Vollständigkeitspflicht: Alle Optionen müssen geprüft 
-werden – auch wenn eine offensichtlich richtige Option 
-bereits gefunden wurde.
-Reduziere das Ergebnis NIEMALS nachträglich auf eine 
-einzige Option, wenn mehrere korrekt sind.
+Vollständigkeitspflicht: Alle Optionen müssen geprüft werden!
 
 AUSGABEFORMAT:
 Aufgabe [Nr.]: [Ergebnis]
-Begründung: [Ein Satz auf Basis der FernUni-Methode]
+Begründung: [Ein Satz auf Basis der FernUni-Methode]"""
 
-FORMAT: Deutsch, fachlich sauber, Schritt für Schritt."""
+        contents = []
+        
+        for msg in st.session_state.messages:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append(
+                types.Content(role=role, parts=[types.Part.from_text(text=msg["content"])])
+            )
 
-        parts = []
+        current_parts = []
+        
         if pdf_files:
             for pdf in pdf_files:
                 pdf_data = pdf.read()
-                parts.append(types.Part.from_bytes(data=pdf_data, mime_type="application/pdf"))
+                current_parts.append(types.Part.from_bytes(data=pdf_data, mime_type="application/pdf"))
                 pdf.seek(0)
         
-        img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='JPEG')
-        parts.append(types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg"))
+        if images:
+            for img in images:
+                img_byte_arr = io.BytesIO()
+                img.save(img_byte_arr, format='JPEG')
+                current_parts.append(types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg"))
         
-        parts.append("Löse ALLE Aufgaben auf dem Bild unter strikter Einhaltung deines Lösungsprozesses")
+        current_parts.append(types.Part.from_text(text=prompt))
+        contents.append(types.Content(role="user", parts=current_parts))
 
         response = client.models.generate_content(
-            model="gemini-3.5-flash",
-            contents=parts,
+            model="gemini-3.1-pro-preview",
+            contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=sys_instr,
                 temperature=0,
                 max_output_tokens=15000,
-                tools=[] # <-- Das ist der harte Riegel für die Google-Suche
+                tools=[{"code_execution": {}}] 
             )
         )
 
         if response.candidates and response.candidates[0].content:
-            response_parts = response.candidates[0].content.parts
-            text_result = "".join([p.text for p in response_parts if hasattr(p, 'text') and p.text])
+            output_text = ""
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, 'text') and part.text:
+                    output_text += part.text
             
-            if text_result:
-                return text_result
+            if output_text:
+                return output_text
             else:
-                return f"Fehler: Die KI hat trotz Verbot versucht, ein Tool auszuführen. \nInterne Rückgabe: {response_parts}"
+                return "Fehler: Unerwartete Antwortstruktur zurückgegeben."
         
-        return "Fehler: Keine Antwort von der KI erhalten."
+        return "Fehler: Keine Antwort erhalten."
 
     except Exception as e:
         if "503" in str(e) or "overloaded" in str(e).lower():
             return "Fehler: Die Google-Server sind aktuell überlastet. Bitte in 2 Minuten erneut versuchen."
         return f"Fehler: {str(e)}"
 
-# --- 5. UI LAYOUT ---
-col1, col2 = st.columns([1, 1])
+# --- 6. UI LAYOUT ---
+col1, col2 = st.columns([1, 1.2])
 
 with col1:
-    uploaded_file = st.file_uploader("Klausurblatt hochladen...", type=["png", "jpg", "jpeg"])
-    if uploaded_file:
-        img = Image.open(uploaded_file).convert('RGB')
-        if "rot" not in st.session_state: st.session_state.rot = 0
-        if st.button("🔄 Bild drehen"): st.session_state.rot = (st.session_state.rot + 90) % 360
-        img = img.rotate(-st.session_state.rot, expand=True)
-        st.image(img, width="stretch")
+    uploaded_files = st.file_uploader("Klausurblätter hochladen...", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+    
+    processed_images = [] 
+    
+    if uploaded_files:
+        if st.button("Bilder 90° drehen"): 
+            st.session_state.rot = (st.session_state.rot + 90) % 360
+        
+        for file in uploaded_files:
+            img = Image.open(file).convert('RGB')
+            img = img.rotate(-st.session_state.rot, expand=True)
+            processed_images.append(img)
+            st.image(img)
 
 with col2:
-    if uploaded_file:
-        if st.button("Aufgaben lösen", type="primary"):
-            status_container = st.empty()
-            with status_container.status("Gemini 3.5 Flash analysiert...", expanded=True) as status:
-                result = solve_everything(img, pdfs)
-                st.markdown("### Ergebnis")
-                st.write(result)
-                status.update(label="Analyse abgeschlossen!", state="complete", expanded=False)
-    else:
-        st.info("Bitte lade links ein Bild hoch.")
+    st.subheader("Chat & Lösung")
+    
+    if uploaded_files:
+        if st.button("Aufgaben lösen & Verlauf auto-clear", type="primary", use_container_width=True):
+            st.session_state.messages = []
+            
+            auto_prompt = "Löse ALLE Aufgaben auf den hochgeladenen Bildern unter strikter Einhaltung deines Lösungsprozesses."
+            st.session_state.messages.append({"role": "user", "content": auto_prompt})
+            
+            with st.spinner("Gemini rechnet..."):
+                answer = generate_response(auto_prompt, processed_images, pdfs)
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+            
+            st.rerun()
+
+    chat_container = st.container(height=600)
+    with chat_container:
+        for msg in st.session_state.messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+    
+    if user_input := st.chat_input("Chat"):
+        if not uploaded_files:
+            st.warning("Bitte lade zuerst eine Aufgabe hoch")
+        else:
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            with chat_container:
+                with st.chat_message("user"):
+                    st.markdown(user_input)
+            
+            with st.chat_message("assistant"):
+                with st.spinner("Gemini antwortet..."):
+                    result = generate_response(user_input, processed_images, pdfs)
+                    st.markdown(result)
+                    st.session_state.messages.append({"role": "assistant", "content": result})
